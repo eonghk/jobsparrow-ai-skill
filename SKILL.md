@@ -46,7 +46,7 @@ Authorization: Bearer <user's API key>
 | Check user's subscription | `GET /profile` |
 | Get user's base CV | `GET /cv` |
 | Create a job application (from URL or JD text) | `POST /applications` |
-| List all applications | `GET /applications` |
+| List applications (paginated) | `GET /applications?limit=20&lastKey=...` → `{ items, lastKey }` |
 | Get application details (full JD, match analysis, company info, gaps) | `GET /applications/:id` |
 | Fill in skill/experience gaps | `POST /applications/:id/enhance` |
 | Generate tailored resume | `POST /applications/:id/resume` |

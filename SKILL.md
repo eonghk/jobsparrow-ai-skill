@@ -48,7 +48,8 @@ Authorization: Bearer <user's API key>
 | Create a job application (from URL or JD text) | `POST /applications` |
 | List applications (paginated) | `GET /applications?limit=20&lastKey=...` → `{ items, lastKey }` |
 | Get application details (full JD, match analysis, company info, gaps) | `GET /applications/:id` |
-| Fill in skill/experience gaps | `POST /applications/:id/enhance` |
+| Fill in skill/experience gaps (repeatable) | `POST /applications/:id/enhance` |
+| Finish gap-filling, unlock generation | `POST /applications/:id/finish-enhancing` |
 | Generate tailored resume | `POST /applications/:id/resume` |
 | Generate cover letter | `POST /applications/:id/cover-letter` |
 | Iterate on resume/cover letter with feedback | `POST /applications/:id/resume/feedback` or `/cover-letter/feedback` |
@@ -102,14 +103,16 @@ When the user says "help me apply for [job]":
    - project-shaped → `relevant_projects: string[]`
    - accomplishments → `additional_achievements: string[]`
    - free-form → `custom_notes: string`
-8. **Generate documents** — In parallel:
+   You can call `/enhance` multiple times to add more before moving on.
+8. **Finish enhancing** — `POST /applications/:id/finish-enhancing` (no body) once the user has nothing more to add. This advances status `enhancing` → `prepare_documents` and **unlocks generation**. It is required: `/resume` and `/cover-letter` are rejected while the application is still `enhancing`. Idempotent — safe to call again.
+9. **Generate documents** — In parallel:
    - `POST /applications/:id/resume` with `{"style": "professional" | "creative" | "minimal"}`
    - `POST /applications/:id/cover-letter` with `{"tone": "professional" | "enthusiastic" | "formal"}`
    Both are async (~30s). Poll `GET /applications/:id` until `resume_generation_status` and `cover_letter_generation_status` are both `"success"`.
-9. **Optional: iterate** — If the user wants changes, use `/resume/feedback` or `/cover-letter/feedback` with `{"feedback": "...", "version": <current>}`. Max 10 versions per document.
-10. **Finalize** — `POST /applications/:id/finalize` to lock versions.
-11. **Download PDFs** — `GET /applications/:id/resume.pdf` (supports `?template=professional|two-column|elegant|colorful|contemporary`) and `GET /applications/:id/cover-letter.pdf`.
-12. **Track status** — `PATCH /applications/:id` with `{"status": "applied"}` when the user actually applies.
+10. **Optional: iterate** — If the user wants changes, use `/resume/feedback` or `/cover-letter/feedback` with `{"feedback": "...", "version": <current>}`. Max 10 versions per document.
+11. **Finalize** — `POST /applications/:id/finalize` to lock versions.
+12. **Download PDFs** — `GET /applications/:id/resume.pdf` (supports `?template=professional|two-column|elegant|colorful|contemporary`) and `GET /applications/:id/cover-letter.pdf`.
+13. **Track status** — `PATCH /applications/:id` with `{"status": "applied"}` when the user actually applies.
 
 ## Resume Templates
 
@@ -142,6 +145,7 @@ analyzing → enhancing → prepare_documents → ready_to_apply → applied →
 |------|---------|
 | 400 — "Provide either url … OR …" | Mixed URL with JD fields, or partial JD |
 | 400 — "Application is still being analyzed" | Called `/resume` too early, wait for status `enhancing` |
+| 400 — "still in the `enhancing` phase … finish-enhancing" | Called `/resume` or `/cover-letter` before finishing gap-fill — call `POST /finish-enhancing` first |
 | 400 — "… already exists … Use the feedback endpoint" | Called `/resume` again after success — switch to `/resume/feedback` |
 | 400 — "Invalid version number" | `/feedback` version mismatch — re-read `GET /applications/:id` |
 | 400 — "feedback cap reached (max 10)" | Hit iteration limit |
@@ -154,6 +158,7 @@ analyzing → enhancing → prepare_documents → ready_to_apply → applied →
 - **Resume `style` ≠ PDF `template`**: `style` controls the LLM writing tone (professional/creative/minimal), `template` controls the visual layout of the PDF (5 options).
 - **Don't poll `/applications/:id` in a tight loop** — generation takes 30s, poll every 5-10s.
 - **`/resume` and `/cover-letter` can only be called once** per application. After that, use the `/feedback` endpoints to iterate.
-- **`/enhance` requires at least one non-empty field** — empty body returns 400.
+- **`/enhance` requires at least one non-empty field** — empty body returns 400. It is repeatable while `enhancing`.
+- **`/finish-enhancing` is required before generating** — the application stays in `enhancing` until you call it (it does not auto-advance, because `/enhance` is repeatable). `/resume` and `/cover-letter` are rejected until then. Idempotent.
 - **`/finalize` is idempotent** — safe to retry.
 - **PDF download is a binary stream** — save the response body directly to a file.

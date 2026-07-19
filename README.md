@@ -1,6 +1,6 @@
 # JobSparrow AI Skill
 
-An AI agent skill that lets your AI assistant help you apply for jobs — with tailored resumes, cover letters, and gap analysis powered by [JobSparrow](https://jobsparrow.ai).
+Apply for jobs without leaving your AI assistant. **JobSparrow AI Skill** is a `SKILL.md` job-application agent for Claude Desktop, OpenClaw, Claude Code, Codex, and Gemini CLI. It reads a job description, tailors your resume, writes a matching cover letter, runs a gap analysis, and exports styled PDFs — powered by [JobSparrow](https://jobsparrow.ai), your AI career advisor from diagnosis to offer.
 
 ## What It Does
 
@@ -13,7 +13,7 @@ An AI agent skill that lets your AI assistant help you apply for jobs — with t
 
 ## Requirements
 
-- A **JobSparrow account** on Essential, Care, or Premium plan
+- A **paid JobSparrow account** — any paid plan works (a free CV diagnosis alone is not enough to run the agent API)
 - A **JobSparrow API key** — create one at [app.jobsparrow.ai/ai-agent](https://app.jobsparrow.ai/ai-agent)
 
 ## Installation

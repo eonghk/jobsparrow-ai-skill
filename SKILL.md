@@ -112,7 +112,7 @@ When the user says "help me apply for [job]":
 8. **Finish enhancing** — `POST /applications/:id/finish-enhancing` (no body) once the user has nothing more to add. This advances status `enhancing` → `prepare_documents` and **unlocks generation**. It is required: `/resume` and `/cover-letter` are rejected while the application is still `enhancing`. Idempotent — safe to call again.
 9. **Generate documents** — In parallel:
    - `POST /applications/:id/resume` with `{"style": "professional" | "creative" | "minimal"}`
-   - `POST /applications/:id/cover-letter` with `{"tone": "professional" | "enthusiastic" | "formal"}`
+   - `POST /applications/:id/cover-letter` (no body; a cover letter takes no style or tone options)
    Both are async (~30s). Poll `GET /applications/:id` until `resume_generation_status` and `cover_letter_generation_status` are both `"success"`.
 10. **Optional: iterate** — If the user wants changes, use `/resume/feedback` or `/cover-letter/feedback` with `{"feedback": "...", "version": <current>}`. Max 10 versions per document.
 11. **Finalize** — `POST /applications/:id/finalize` to lock versions.

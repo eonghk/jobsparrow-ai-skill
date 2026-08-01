@@ -78,7 +78,12 @@ analysis step, so they are empty while `status` is `analyzing` and filled once
   - `parsed_requirements` — `{ required_skills[], preferred_skills[],
     experience_years, education_level, certifications[], key_responsibilities[] }`.
   - `strengths[]` — CV signals that already align with the JD (positive talking points).
-  - `gaps[]` — `{ category, severity, item, suggestion }` (drive the `/enhance` flow).
+  - `gaps[]` — a unified list of "areas to address" (structural gaps + recruiter-eye
+    findings): `{ category, severity, item, suggestion, source, remedy, evidence? }`.
+    Only drive `/enhance` from items with `remedy: "needs_input"`; items with
+    `remedy: "auto_rewrite"` are fixed automatically during resume generation — do NOT
+    ask the user about them.
+  - `recruiter_verdict` — one-line recruiter-eye overall take on the CV for this role.
 
 If a field is null/missing, the analysis has not finished yet — re-read after
 `status` is `enhancing`.
@@ -94,8 +99,8 @@ When the user says "help me apply for [job]":
    - `{"company_name": "...", "job_title": "...", "job_description": "..."}` — user pastes the JD
    Response: `{application_id, status: "analyzing"}`
 4. **Wait for analysis** — `GET /applications/:id` until status is `"enhancing"` (analysis takes 30-60s, poll every 5s).
-5. **Read the analysis** — The response carries the full picture (see "Reading Application Detail"): `job_description`, `company_info`, `analysis.match_score` + `recommendation`, `analysis.parsed_requirements`, `analysis.strengths[]`, and `analysis.gaps[]` (each gap has `category`, `severity`, `item`, `suggestion`). Use the match report + company info to ground your tailoring, not just the gaps.
-6. **Ask the user** — Show the gaps (especially `critical` and `important` ones) and ask them to fill in details.
+5. **Read the analysis** — The response carries the full picture (see "Reading Application Detail"): `job_description`, `company_info`, `analysis.match_score` + `recommendation`, `analysis.parsed_requirements`, `analysis.strengths[]`, `analysis.recruiter_verdict`, and `analysis.gaps[]` (each area has `category`, `severity`, `item`, `suggestion`, `source`, `remedy`). Use the match report + company info to ground your tailoring, not just the gaps.
+6. **Ask the user** — Show only the areas with `remedy: "needs_input"` (especially `critical` and `important` ones) and ask them to fill in details. Skip `remedy: "auto_rewrite"` areas — the resume generator fixes those automatically, so pestering the user about them is noise.
 7. **Enhance** — `POST /applications/:id/enhance` with the user's answers. Map gap categories to fields:
    - `skill` → `additional_skills: string[]`
    - `experience` → `additional_experience: string`

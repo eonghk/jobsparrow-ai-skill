@@ -86,7 +86,8 @@ analysis step, so they are empty while `status` is `analyzing` and filled once
     applications); items with `remedy: "auto_rewrite"` are fixed automatically during
     resume generation — do NOT ask the user about them. **Never ask about items with
     `work_eligibility: true`** (visa, citizenship, residency): the resume states work
-    rights only when the user's own CV or notes do. `user_status: "dismissed"` means the
+    rights only when the user's own CV or notes do. If the user volunteers their work
+    rights, send their words as the answer to that gap. `user_status: "dismissed"` means the
     user said they don't have it; don't ask again.
   - `recruiter_verdict` — one-line recruiter-eye overall take on the CV for this role.
 - `resume` — once a resume exists: `current_version`, `tier` (writing tier of that
@@ -198,7 +199,6 @@ analyzing → enhancing → prepare_documents → ready_to_apply → applied →
 | 400 — "Invalid version number" | `/feedback` version mismatch — re-read `GET /applications/:id` |
 | 400 — "feedback cap reached (max 10)" | Hit iteration limit (dismiss-only `/resume/gap-answers` still works) |
 | 400 — "Unknown gap id(s)" | Use `analysis.gaps[].id`; nothing was saved |
-| 400 — "… about work eligibility, which is never asked about" | Don't answer `work_eligibility` gaps; if the user volunteered their work rights, send their words as `custom_notes` or `feedback` |
 | 400 — "line_notes[i]: not a line of resume version N" | Copy one sentence or bullet exactly from the current version; add `role` if the words are on several lines |
 | 401 — "Invalid API key" | Wrong or revoked token |
 | 403 — "subscription_required" | User needs a paid plan |

@@ -136,8 +136,8 @@ When the user says "help me apply for [job]":
    Both are async (~30-90s). Poll `GET /applications/:id` until `resume_generation_status` and `cover_letter_generation_status` are both `"success"`.
 10. **Second round: what's still open** — About 20s after the resume succeeds (up to ~150s), `resume.gap_coverage` appears on `GET /applications/:id`. While `gap_coverage.pending` is `true`, poll again every 5-10s.
     - Each item is `covered` (with the resume line as `quote`), `auto` (handled by the writer), or `open` (with a `question`).
-    - Ask the user **only** the questions for `next_question_ids` — at most 3 at a time, the same 3 the web app shows. Use each item's `question`.
-    - Send their answers: `POST /applications/:id/resume/gap-answers` with `{"answers": [{"gap_id": "...", "answer": "..."}], "dismissed_gap_ids": [...]}`. Answers start ONE new version at the same tier (watch `resume_generation_status`); dismiss-only saves without regenerating.
+    - Ask the user **only** about `next_question_ids` — at most 3 at a time, the same 3 the web app shows. Use each item's `question`. Partly met items (below) come last.
+    - Send their answers: `POST /applications/:id/resume/gap-answers` with `{"version": <the version you read>, "answers": [{"gap_id": "...", "answer": "..."}], "dismissed_gap_ids": [...]}` (`version` is optional; if sent, a newer version gets a 400 so you re-read the questions). Answers start ONE new version at the same tier (watch `resume_generation_status`); dismiss-only saves without regenerating.
     - When the new version succeeds, read `gap_coverage` again and repeat while the user wants to. Stop when nothing is open or they're done.
     - **"Added, but only partly met"**: an `open` item with `answered_adjacent: true` means their answer is on the resume (`quote`) but only sits next to the requirement (e.g. POS and Xero for "core banking system"). Tell them it was added and is still only partly met; never call it met. Ask again only if they have more.
 11. **Optional: iterate** — `/resume/feedback` or `/cover-letter/feedback` with `{"feedback": "...", "version": <current>}`. For the resume, if the user says a specific line is wrong, send `line_notes` instead of (or with) `feedback`:
@@ -198,6 +198,7 @@ analyzing → enhancing → prepare_documents → ready_to_apply → applied →
 | 400 — "Invalid version number" | `/feedback` version mismatch — re-read `GET /applications/:id` |
 | 400 — "feedback cap reached (max 10)" | Hit iteration limit (dismiss-only `/resume/gap-answers` still works) |
 | 400 — "Unknown gap id(s)" | Use `analysis.gaps[].id`; nothing was saved |
+| 400 — "… about work eligibility, which is never asked about" | Don't answer `work_eligibility` gaps; if the user volunteered their work rights, send their words as `custom_notes` or `feedback` |
 | 400 — "line_notes[i]: not a line of resume version N" | Copy one sentence or bullet exactly from the current version; add `role` if the words are on several lines |
 | 401 — "Invalid API key" | Wrong or revoked token |
 | 403 — "subscription_required" | User needs a paid plan |

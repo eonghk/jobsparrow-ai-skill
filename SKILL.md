@@ -48,11 +48,12 @@ Authorization: Bearer <user's API key>
 | Create a job application (from URL or JD text) | `POST /applications` |
 | List applications (paginated) | `GET /applications?limit=20&lastKey=...` → `{ items, lastKey }` |
 | Get application details (full JD, match analysis, company info, gaps) | `GET /applications/:id` |
-| Fill in skill/experience gaps (repeatable) | `POST /applications/:id/enhance` |
+| Answer gaps before generating (repeatable) | `POST /applications/:id/enhance` |
 | Finish gap-filling, unlock generation | `POST /applications/:id/finish-enhancing` |
 | Generate tailored resume | `POST /applications/:id/resume` |
 | Generate cover letter | `POST /applications/:id/cover-letter` |
-| Iterate on resume/cover letter with feedback | `POST /applications/:id/resume/feedback` or `/cover-letter/feedback` |
+| Answer the gaps still open after generating | `POST /applications/:id/resume/gap-answers` |
+| Iterate on resume/cover letter with feedback (resume: also notes on single lines) | `POST /applications/:id/resume/feedback` or `/cover-letter/feedback` |
 | Lock final versions | `POST /applications/:id/finalize` |
 | Download resume PDF | `GET /applications/:id/resume.pdf` |
 | Download cover letter PDF | `GET /applications/:id/cover-letter.pdf` |
@@ -79,11 +80,18 @@ analysis step, so they are empty while `status` is `analyzing` and filled once
     experience_years, education_level, certifications[], key_responsibilities[] }`.
   - `strengths[]` — CV signals that already align with the JD (positive talking points).
   - `gaps[]` — a unified list of "areas to address" (structural gaps + recruiter-eye
-    findings): `{ category, severity, item, suggestion, source, remedy, evidence? }`.
-    Only drive `/enhance` from items with `remedy: "needs_input"`; items with
-    `remedy: "auto_rewrite"` are fixed automatically during resume generation — do NOT
-    ask the user about them.
+    findings): `{ id, category, severity, item, suggestion, source?, remedy?, evidence?,
+    user_input?, user_status?, work_eligibility? }`.
+    Only ask about items with `remedy: "needs_input"` (or no `remedy`, on older
+    applications); items with `remedy: "auto_rewrite"` are fixed automatically during
+    resume generation — do NOT ask the user about them. **Never ask about items with
+    `work_eligibility: true`** (visa, citizenship, residency): the resume states work
+    rights only when the user's own CV or notes do. `user_status: "dismissed"` means the
+    user said they don't have it; don't ask again.
   - `recruiter_verdict` — one-line recruiter-eye overall take on the CV for this role.
+- `resume` — once a resume exists: `current_version`, `tier` (writing tier of that
+  version) and `gap_coverage` (see step 10):
+  `{ version, checked, pending, counts, items: [{gap_id, item, severity, status, quote?, question?, answered_adjacent?}], next_question_ids }`.
 
 If a field is null/missing, the analysis has not finished yet — re-read after
 `status` is `enhancing`.
@@ -99,9 +107,9 @@ When the user says "help me apply for [job]":
    - `{"company_name": "...", "job_title": "...", "job_description": "..."}` — user pastes the JD
    Response: `{application_id, status: "analyzing"}`
 4. **Wait for analysis** — `GET /applications/:id` until status is `"enhancing"` (analysis takes 30-60s, poll every 5s).
-5. **Read the analysis** — The response carries the full picture (see "Reading Application Detail"): `job_description`, `company_info`, `analysis.match_score` + `recommendation`, `analysis.parsed_requirements`, `analysis.strengths[]`, `analysis.recruiter_verdict`, and `analysis.gaps[]` (each area has `category`, `severity`, `item`, `suggestion`, `source`, `remedy`). Use the match report + company info to ground your tailoring, not just the gaps.
-6. **Ask the user** — Show only the areas with `remedy: "needs_input"` (especially `critical` and `important` ones) and ask them to fill in details. Skip `remedy: "auto_rewrite"` areas — the resume generator fixes those automatically, so pestering the user about them is noise.
-7. **Enhance** — `POST /applications/:id/enhance` with the user's answers. Map gap categories to fields:
+5. **Read the analysis** — The response carries the full picture (see "Reading Application Detail"): `job_description`, `company_info`, `analysis.match_score` + `recommendation`, `analysis.parsed_requirements`, `analysis.strengths[]`, `analysis.recruiter_verdict`, and `analysis.gaps[]`. Use the match report + company info to ground your tailoring, not just the gaps.
+6. **Ask the user** — Show only the areas with `remedy: "needs_input"` (especially `critical` and `important` ones) and ask them to fill in details. Skip `remedy: "auto_rewrite"` areas (the generator fixes those) and `work_eligibility: true` areas (never ask about work rights).
+7. **Enhance** — `POST /applications/:id/enhance` with the user's answers. An answer to a specific gap goes in `gap_answers: [{"gap_id": "<gaps[].id>", "answer": "<their words>"}]`; gaps they don't have go in `dismissed_gap_ids: [...]` (final). Other material maps to fields:
    - `skill` → `additional_skills: string[]`
    - `experience` → `additional_experience: string`
    - `certification` → `certifications_in_progress: string[]`
@@ -123,13 +131,36 @@ When the user says "help me apply for [job]":
    `/enhance` multiple times to add more before moving on.
 8. **Finish enhancing** — `POST /applications/:id/finish-enhancing` (no body) once the user has nothing more to add. This advances status `enhancing` → `prepare_documents` and **unlocks generation**. It is required: `/resume` and `/cover-letter` are rejected while the application is still `enhancing`. Idempotent — safe to call again.
 9. **Generate documents** — In parallel:
-   - `POST /applications/:id/resume` with `{"style": "professional" | "creative" | "minimal"}`
+   - `POST /applications/:id/resume` with `{"style": "professional", "tier": "standard"}` — `tier` is optional (see "Writing tiers"); default `standard`.
    - `POST /applications/:id/cover-letter` (no body; a cover letter takes no style or tone options)
-   Both are async (~30s). Poll `GET /applications/:id` until `resume_generation_status` and `cover_letter_generation_status` are both `"success"`.
-10. **Optional: iterate** — If the user wants changes, use `/resume/feedback` or `/cover-letter/feedback` with `{"feedback": "...", "version": <current>}`. Max 10 versions per document.
-11. **Finalize** — `POST /applications/:id/finalize` to lock versions.
-12. **Download PDFs** — `GET /applications/:id/resume.pdf` (supports `?template=professional|two-column|elegant|colorful|contemporary`) and `GET /applications/:id/cover-letter.pdf`.
-13. **Track status** — `PATCH /applications/:id` with `{"status": "applied"}` when the user actually applies.
+   Both are async (~30-90s). Poll `GET /applications/:id` until `resume_generation_status` and `cover_letter_generation_status` are both `"success"`.
+10. **Second round: what's still open** — About 20s after the resume succeeds (up to ~150s), `resume.gap_coverage` appears on `GET /applications/:id`. While `gap_coverage.pending` is `true`, poll again every 5-10s.
+    - Each item is `covered` (with the resume line as `quote`), `auto` (handled by the writer), or `open` (with a `question`).
+    - Ask the user **only** the questions for `next_question_ids` — at most 3 at a time, the same 3 the web app shows. Use each item's `question`.
+    - Send their answers: `POST /applications/:id/resume/gap-answers` with `{"answers": [{"gap_id": "...", "answer": "..."}], "dismissed_gap_ids": [...]}`. Answers start ONE new version at the same tier (watch `resume_generation_status`); dismiss-only saves without regenerating.
+    - When the new version succeeds, read `gap_coverage` again and repeat while the user wants to. Stop when nothing is open or they're done.
+    - **"Added, but only partly met"**: an `open` item with `answered_adjacent: true` means their answer is on the resume (`quote`) but only sits next to the requirement (e.g. POS and Xero for "core banking system"). Tell them it was added and is still only partly met; never call it met. Ask again only if they have more.
+11. **Optional: iterate** — `/resume/feedback` or `/cover-letter/feedback` with `{"feedback": "...", "version": <current>}`. For the resume, if the user says a specific line is wrong, send `line_notes` instead of (or with) `feedback`:
+    ```json
+    {"version": 2, "line_notes": [
+      {"line": "Led social strategy across 3 venues", "kind": "not_true", "note": "I posted on their accounts"},
+      {"line": "Built the monthly stock sheet", "kind": "wrong_role", "role": "Brew & Co"}
+    ]}
+    ```
+    Copy `line` exactly from the current version (one summary sentence or one bullet). `kind`: `not_true`, `overstated`, `wrong_role` (the writer may move it to the right role) or `reword`. `note` is the user's words; `role` is only needed when the same words appear on two lines. The server writes the instruction, so with notes alone only those lines change. All notes go out as one new version. Max 10 versions per document (gap-answers with answers count too; dismiss-only doesn't).
+12. **Finalize** — `POST /applications/:id/finalize` to lock versions.
+13. **Download PDFs** — `GET /applications/:id/resume.pdf` (supports `?template=professional|two-column|elegant|colorful|contemporary`) and `GET /applications/:id/cover-letter.pdf`.
+14. **Track status** — `PATCH /applications/:id` with `{"status": "applied"}` when the user actually applies.
+
+## Writing tiers
+
+`tier` on `POST /resume` sets how far the writer may move from the user's own wording. The user picks; default to `standard` unless they ask otherwise. Every later version keeps the tier (to change it, start a new application). `resume.tier` shows the current one.
+
+- **precise** — keeps their sentences; only selects, orders and fixes. For senior or regulated roles and strong resumes. Gaps are left for the user to answer.
+- **standard** (default) — tightens their material and aims it at the role. Rewritten in October 2026 ("Standard v2"): closer to the user's own words than before, so expect fewer job-ad keywords than older versions.
+- **bold** — puts transferable experience forward harder, for thin experience.
+
+Every tier keeps the same facts: no invented employers, titles, dates, degrees, numbers or skills.
 
 ## Resume Templates
 
@@ -165,14 +196,16 @@ analyzing → enhancing → prepare_documents → ready_to_apply → applied →
 | 400 — "still in the `enhancing` phase … finish-enhancing" | Called `/resume` or `/cover-letter` before finishing gap-fill — call `POST /finish-enhancing` first |
 | 400 — "… already exists … Use the feedback endpoint" | Called `/resume` again after success — switch to `/resume/feedback` |
 | 400 — "Invalid version number" | `/feedback` version mismatch — re-read `GET /applications/:id` |
-| 400 — "feedback cap reached (max 10)" | Hit iteration limit |
+| 400 — "feedback cap reached (max 10)" | Hit iteration limit (dismiss-only `/resume/gap-answers` still works) |
+| 400 — "Unknown gap id(s)" | Use `analysis.gaps[].id`; nothing was saved |
+| 400 — "line_notes[i]: not a line of resume version N" | Copy one sentence or bullet exactly from the current version; add `role` if the words are on several lines |
 | 401 — "Invalid API key" | Wrong or revoked token |
 | 403 — "subscription_required" | User needs a paid plan |
 | 404 | Wrong application_id or belongs to another user |
 
 ## Important Notes
 
-- **Resume `style` ≠ PDF `template`**: `style` controls the LLM writing tone (professional/creative/minimal), `template` controls the visual layout of the PDF (5 options).
+- **`tier` ≠ `style` ≠ PDF `template`**: `tier` sets the wording (see "Writing tiers"). `style` no longer changes the wording; it is stored as the default PDF template. `template` picks the PDF layout (5 options) and overrides it.
 - **Don't poll `/applications/:id` in a tight loop** — generation takes 30s, poll every 5-10s.
 - **`/resume` and `/cover-letter` can only be called once** per application. After that, use the `/feedback` endpoints to iterate.
 - **`/enhance` requires at least one non-empty field** — empty body returns 400. It is repeatable while `enhancing`.

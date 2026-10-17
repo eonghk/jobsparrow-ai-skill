@@ -5,9 +5,10 @@ Apply for jobs without leaving your AI assistant. **JobSparrow AI Skill** is a `
 ## What It Does
 
 - Analyse job descriptions and identify skill gaps
-- Tailor your resume to specific job postings
+- Tailor your resume to specific job postings, in the writing tier you pick (precise, standard or bold)
+- Ask you only what is still open after the first draft, a few questions at a time
 - Generate cover letters matched to the role
-- Iterate on documents with AI feedback
+- Iterate on documents with AI feedback, including notes on single lines ("this isn't true for me")
 - Download styled PDFs (5 resume templates)
 - Track application status
 

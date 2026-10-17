@@ -107,8 +107,20 @@ When the user says "help me apply for [job]":
    - `certification` → `certifications_in_progress: string[]`
    - project-shaped → `relevant_projects: string[]`
    - accomplishments → `additional_achievements: string[]`
-   - free-form → `custom_notes: string`
-   You can call `/enhance` multiple times to add more before moving on.
+   - anything about ONE specific job → `role_notes: [{role_index, role_company, role_position, text}]`
+   - free-form that spans no single job → `custom_notes: string`
+
+   **Use `role_notes`, not `custom_notes`, whenever the answer is about a particular job.**
+   Unattributed text leaves the resume generator to guess which role a claim belongs to, and a
+   wrong guess prints one job's outcomes under another — which reads to a recruiter as the
+   candidate overstating themselves. A real customer cancelled over exactly this. Copy
+   `role_company` and `role_position` verbatim from the CV's experience entry (the index alone
+   is unsafe: re-parsing the CV shifts it). Use `role_index: -1` for a genuinely general note.
+
+   `role_notes` **replaces** the stored set rather than appending, so send the complete list on
+   each call — that is what lets you move a note you filed against the wrong role instead of
+   ending up with the claim on both. Every other field still accumulates, and you can call
+   `/enhance` multiple times to add more before moving on.
 8. **Finish enhancing** — `POST /applications/:id/finish-enhancing` (no body) once the user has nothing more to add. This advances status `enhancing` → `prepare_documents` and **unlocks generation**. It is required: `/resume` and `/cover-letter` are rejected while the application is still `enhancing`. Idempotent — safe to call again.
 9. **Generate documents** — In parallel:
    - `POST /applications/:id/resume` with `{"style": "professional" | "creative" | "minimal"}`
